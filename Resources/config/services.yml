@@ -1,0 +1,17 @@
+#services:
+#    Landlib\SymfonyToolsBundle\Service\FileUploaderService:
+#        arguments: ["@service_container"]
+#        class: Landlib\SymfonyToolsBundle\Service\FileUploaderService
+
+#        #class: FOS\UserBundle\Controller\ChangePasswordController
+#        #arguments: ["@service_container", "@doctrine"]
+
+
+rupayservices.yacache: "%env(resolve:YANDEX_CACHE)%"
+rupayservices.yakey: "%env(resolve:YANDEX_SECRET_KEY)%"
+#all entity classes set here
+rupayservices.defaultPayTransactionEntity: Landlib\SymfonyRuPaymentsServices\Entity\PhdPayTransaction
+
+#Код операции, которая записывается в operations по умолчанию при успешной оплате
+rupayservices.operation_code_id: 4;
+

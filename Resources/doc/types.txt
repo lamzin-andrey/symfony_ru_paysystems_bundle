@@ -1,0 +1,13 @@
+Для яндекс формы
+
+case 'AC':
+	$sMethod = 'bs';
+	break;
+case 'PC':
+	$sMethod = 'ps';
+	
+в _REQUEST['method'] ( $httpFoundationRequest->get('method') ) должны быть AC или PC
+
+Сумма должна быть в поле sum
+
+
