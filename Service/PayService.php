@@ -63,7 +63,7 @@ class PayService
 				$label = intval($nTid);
 				$yaRequestLogId = $this->_insertYandexNotificationData($operation_id, $notification_type, $datetime, $sender, $codepro, $amount, $withdraw_amount, 	$label, $operation_label, $unaccepted);
 				$oRepository = $this->_oContainer->get('doctrine')->getRepository($this->_sPayTransactionClass);
-				$oEm = $this->_oContainer->get('doctrine')->getManager();
+				$this->_oEm = $oEm = $this->_oContainer->get('doctrine')->getManager();
 				$oPayTransaction = $oRepository->find($nTid);
 				$nId = 0;
 				if ($oPayTransaction) {
@@ -72,16 +72,16 @@ class PayService
 				if ($nId == 0) {
 					$s = $this->_sPayTransactionClass;
 					$oPayTransaction = new $s();
-					$oLog->info("Will update pay_transaction!\n" , $oLogCtx);
-					/** @var  PhdPayTransaction $oPayTransaction*/
-					$oPayTransaction->setIsConfirmed(true);
-					$oPayTransaction->setYaHttpNoticeId($yaRequestLogId);
-					$oPayTransaction->setRealSum($withdraw_amount);
-					$oEm->persist($oPayTransaction);
-					//Записываем данные в operations
-					$aData = $this->_createOperation($label, $withdraw_amount, $yaRequestLogId, $withdraw_amount);
-					$oContext->$sMethod($label, $aData);
 				}
+				$oLog->info("Will update pay_transaction!\n" , $oLogCtx);
+				/** @var  PhdPayTransaction $oPayTransaction*/
+				$oPayTransaction->setIsConfirmed(true);
+				$oPayTransaction->setYaHttpNoticeId($yaRequestLogId);
+				$oPayTransaction->setRealSum($withdraw_amount);
+				$oEm->persist($oPayTransaction);
+				//Записываем данные в operations
+				$aData = $this->_getEmailData($label, $withdraw_amount, $yaRequestLogId);
+				$oContext->$sMethod($aData);
 			}
 			$oEm->flush();
 			//NOTE возможно на самом деле тут действительно нужен 200
@@ -89,11 +89,12 @@ class PayService
 		return $oResponse;
 	}
 	/**
-	 * Добавить запись в таблицу транзакций
+	 * Добавить запись в таблицу транзакций и таблицу операций
 	 * @param int $nUserId - идентификатор пользователя (клиента, покупателя)
+	 * @param int $nOrderId - идентификатор товара или услуги (или заказа с группой товаров или услуг)
 	 * @return int идентификатор записи из таблицы связанной с сущностью 0 - если не удалось создать запись
 	*/
-	public function createTransaction(int $nUserId) : int
+	public function createTransaction(int $nUserId, int $nOrderId) : int
 	{
 		$sClass = $this->_sPayTransactionClass;
 		$oPayTransaction = new $sClass();
@@ -118,9 +119,22 @@ class PayService
 			return 0;
 		}
 		$oPayTransaction->setMethod($sMethod);
-
+		$oPayTransaction->setCreated(new \DateTime());
 		$oEm = $this->_oContainer->get('doctrine')->getManager();
 		$oEm->persist($oPayTransaction);
+		$oEm->flush();
+
+		//create operation
+		$sClass = $this->_sOperationsClass;
+		/** @var \App\Entity\PhdOperations $operation */
+		$operation = new $sClass();
+		$operation->setUserId($nUserId);
+		$operation->setOpCodeId($this->_oContainer->getParameter('rupayservices.operation_code_id'));
+		$operation->setMainId($nOrderId);
+		$operation->setSum($oPayTransaction->getSum());
+		$operation->setPayTransactionId( intval($oPayTransaction->getId()) );
+		$operation->setCreated( new \DateTime());
+		$oEm->persist($operation);
 		$oEm->flush();
 		return ($oPayTransaction->getId() ?? 0 );
 	}
@@ -184,38 +198,41 @@ class PayService
 		$oYaHttpNotice->setOperationLabel($operation_label);
 		$oYaHttpNotice->setOperationId($operation_id);
 		$oYaHttpNotice->setLabel($label);
+		$oYaHttpNotice->setDateTime( new \DateTime() );
 		$oEm->persist($oYaHttpNotice);
 		$oEm->flush();
 		$insertId = $oYaHttpNotice->getId();
 		return $insertId;
 	}
 	/**
-	 * Создать запись в таблице operations
 	 * Результат может использоваться например для отправки письма
-	 * @return array ['sum' => float, 'user_id' => int, 'email' => string, 'phone' => string]
+	 * @return array ['sum' => float, 'user_id' => int, 'email' => string, 'phone' => string, 'order_id']
 	*/
-	private function _createOperation(string $label, string $withdraw_amount, string $yaRequestLogId) : array
+	private function _getEmailData(string $label, string $withdraw_amount, string $yaRequestLogId) : array
 	{
-		$aResult = ['sum' => 0, 'user_id' => 0, 'email' => '', 'phone' => ''];
+		//TODO ad relation OneToOne
+		$aResult = ['sum' => 0, 'user_id' => 0, 'email' => '', 'phone' => '', 'order_id' => ''];
 		$nSum = intval($withdraw_amount);
 		$oLog = $this->_oLog;
 		$aCtx = ['context' => 'payment'];
-		$oLog->info("PayService::_createOperation got payTransactionId = {$label}\n", $aCtx);
+		$oLog->info("PayService::_getEmailData got payTransactionId = {$label}\n", $aCtx);
 
 		$oPayTransactionRepository = $this->_oContainer->get('doctrine')->getRepository($this->_sPayTransactionClass);
 		$oPayTransaction = $oPayTransactionRepository->find($label);
+
 		if ($oPayTransaction) {
-			$storedSum = $oPayTransaction->getSum();
-			if (!$storedSum) {
-				$oLog->info('!$storedSum, requestLogId = ' . $yaRequestLogId. ", 
+			$operationsRepository = $this->_oContainer->get('doctrine')->getRepository($this->_sOperationsClass);
+			/** @var \App\Entity\PhdOperations $operation */
+			$operation = $operationsRepository->findOneBy(['payTransactionId' => $oPayTransaction->getId()]);
+			if (!$operation) {
+				$oLog->info('!operation' . ", 
 					payTransactionId = {$label}\n", $aCtx);
 				return $aResult;
-			} else {
-				$oLog->info("storedSum = '{$storedSum}', nSum = '{$nSum}' \n", $aCtx);
 			}
-
 			//записываем в истории операций
 			$aResult['user_id'] = $userId = intval( $oPayTransaction->getUserId() );
+			$aResult['sum'] = $userId = floatval( $oPayTransaction->getSum() );
+			$aResult['order_id'] = $operation->getMainId();
 			$oUserRepository = $this->_oContainer->get('doctrine')->getRepository($this->_sPayUserClass);
 			$oUser = $oUserRepository->find($userId);
 			if ($oUser) {
@@ -226,16 +243,6 @@ class PayService
 					$aResult['phone'] = $oUser->getPhone();
 				}
 			}
-
-			$s = $this->_sOperationsClass;
-			/** @var \App\Entity\PhdOperations $operation */
-			$operation = new $s();
-			$operation->setUserId($userId);
-			$operation->setUserId($this->_oContainer->getParameter('rupayservices.operation_code_id'));
-			$operation->setMainId( intval($label) );
-			$operation->setSum($nSum);
-			$operation->setPayTransactionId( intval($oPayTransaction->getId()) );
-			$aResult['sum'] = $oPayTransaction->getRealSum();
 		}
 		return $aResult;
 	}
