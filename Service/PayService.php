@@ -7,18 +7,24 @@ use \Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Doctrine\Common\Collections\Criteria;
 use Symfony\Component\HttpFoundation\Response;
+use App\Service\HttpRequest;
+use \StdClass;
+
 /**
  Потом будет бандл
 */
 class PayService
 {
+	/** @property  App\Service\HttpRequest $oHttpRequest */
+	private $_oHttpRequest = null;
 
-	public function __construct(ContainerInterface $container, LoggerInterface $oLog)
+	public function __construct(ContainerInterface $container, LoggerInterface $oLog, HttpRequest $oHttpRequest)
 	{
 		$this->_oContainer = $container;
-		$this->oTranslator = $container->get('translator');
+		$this->_oTranslator = $container->get('translator');
 		$this->_oRequest = $container->get('request_stack')->getCurrentRequest();
 		$this->_oLog = $oLog;
+		$this->_oHttpRequest = $oHttpRequest;
 		//TODO set default entity classes from config
 		// 'App\Entity\YaHttpNotice'
 	}
@@ -92,10 +98,20 @@ class PayService
 	 * Добавить запись в таблицу транзакций и таблицу операций
 	 * @param int $nUserId - идентификатор пользователя (клиента, покупателя)
 	 * @param int $nOrderId - идентификатор товара или услуги (или заказа с группой товаров или услуг)
-	 * @return int идентификатор записи из таблицы связанной с сущностью 0 - если не удалось создать запись
+	 * @return StdClass {nPaytansactionId}
+	 *   nPayTransactionId int идентификатор записи из таблицы связанной с сущностью payTransaction 0 - если не удалось создать запись
+	 *   sPayUrl - в случае использования qiwi кошелька содержит url на который надо отправить пользователя
+	 *   nBillId - в случае использования qiwi кошелька содержит номер счёта в системе qiwi полученный при создании счета
+	 *   sError string - сообщение об ошибке, если не удалось создать транзакцию
 	*/
-	public function createTransaction(int $nUserId, int $nOrderId) : int
+	public function createTransaction(int $nUserId, int $nOrderId) : StdClass
 	{
+		$oResult = new \StdClass();
+		$oResult->nPayTransactionId = 0;
+		$oResult->nBillId = 0;
+		$oResult->sPayUrl = '';
+		$oResult->sError = '';
+
 		$sClass = $this->_sPayTransactionClass;
 		$oPayTransaction = new $sClass();
 		$oPayTransaction->setUserId($nUserId);
@@ -118,11 +134,60 @@ class PayService
 		if (!$sMethod) {
 			return 0;
 		}
+
 		$oPayTransaction->setMethod($sMethod);
 		$oPayTransaction->setCreated(new \DateTime());
 		$oEm = $this->_oContainer->get('doctrine')->getManager();
+
+		//Да, это плохой код, но у меня нет времени на хороший
+		if ($sMethod == 'ms') {
+			$sPhone =  $this->_normalizePhone( $this->_oRequest->get('phone', '') );
+			$nSz = strlen($sPhone);
+			if ($nSz != 11) {
+				$oResult->sError = $this->_oTranslator->trans('Телефон должен содержать 11 цифр');
+				return $oResult;
+			}
+			$sNums = '0123456789';
+			for ($i = 0; $i < $nSz; $i++) {
+				$ch = $sPhone[$i];
+				if (strpos($sNums, $ch) === false) {
+					$oResult->sError = $this->_oTranslator->trans('Недопустимый символ "' . $ch . '" в номере телефона');
+					return $oResult;
+				}
+			}
+			$sThree = intval(substr($sPhone, 1, 3));
+			$aBeelineNumbers = [900, 902, 903, 904, 905, 906, 908, 909, 950, 951, 953, 960, 961, 962, 963, 964, 965, 966, 967, 968, 969, 980, 983, 986];
+			$aMtsNumbers = [901, 902, 904, 908, 910, 911, 912, 913, 914, 915, 916, 917, 918, 919, 950, 978, 980, 981, 982, 983, 984, 985, 986, 987, 988, 989];
+
+			if (in_array($sThree, $aBeelineNumbers)) {
+				$oResult->sError = $this->_oTranslator->trans('Мы считаем, что вы введи номер Beeline, потому что первые три цифры номера после +7 или 8 "' . $sThree . '". В настоящее время платежи принимаются только с номеров МТС или Теле 2. ');
+				return $oResult;
+			}
+			$oPayTransaction->setPhone($sPhone);
+		}
+
 		$oEm->persist($oPayTransaction);
 		$oEm->flush();
+
+		//Если оплата через QIWI - Пока не ясно, что тут делать)
+		/*if ($sMethod == 'ms') {
+			//если дойдём до PayPal, пусть меняется на что надо
+			$sCurrency = 'RUB';
+			$sComment = 'test'; //'Payment for converting PSD to HTML + CSS (qiwi)';
+			//TODO тут узкое место,  если будет не работать, начни с этого слэша
+			$sExpirationDateTime = date('Y-m-d') . 'T' . date('H:i:s+03:00');
+			$sExpirationDateTime = urlencode($sExpirationDateTime);
+			$oQiwiResult = $this->_getQiwiPayFormUrl($oPayTransaction->getId(), floatval($this->_oRequest->get('sum', 0)), $sCurrency, $nUserId, $sComment, $sExpirationDateTime);
+			$oResult->sPayUrl = $oQiwiResult->payUrl;
+			$oResult->nBillId = $oQiwiResult->billId;
+
+			if ($oResult->nBillId) {
+				$oPayTransaction->setQiwiBillId(intval($oResult->nBillId));
+				$oEm->persist($oPayTransaction);
+				$oEm->flush();
+			}
+		}*/
+
 
 		//create operation
 		$sClass = $this->_sOperationsClass;
@@ -136,7 +201,9 @@ class PayService
 		$operation->setCreated( new \DateTime());
 		$oEm->persist($operation);
 		$oEm->flush();
-		return ($oPayTransaction->getId() ?? 0 );
+
+		$oResult->nPayTransactionId = ($oPayTransaction->getId() ?? 0 );
+		return $oResult;
 	}
 
 	public function setPayTransactionEntityClassName(string $s)
@@ -245,5 +312,96 @@ class PayService
 			}
 		}
 		return $aResult;
+	}
+	/**
+	 * @param int $nBuild - на данный момнет использую payTransaction.id
+	 * @param float $nSum
+	 * @param string $sCurrency
+	 * @param int $nUserId
+	 * @param string $sComment
+	 * @param int $nExpirationDateTime
+	 * @return \StdClass {billId, payUrl}
+	*/
+	private function _getQiwiPayFormUrl(int $nBuild, float $nSum, string $sCurrency, int $nUserId, string $sComment, string $sExpirationDateTime) : \StdClass
+	{
+		/** @var \App\Service\HttpRequest $oHttpRequest */
+		$oHttpRequest = $this->_oHttpRequest;
+		$sJsonData = json_encode([
+			'billId' => $nBuild,
+			'amount' => [
+				'value' => '1.00',
+				'currency' => $sCurrency
+			],
+			'phone' => $this->_oContainer->getParameter('app.qiwi_phone'),
+			'account' => $nUserId,
+			'comment' => $sComment,
+			'email' => 'example@mail.org',
+			'expirationDateTime' => $sExpirationDateTime
+		]);
+		$sUrl = 'https://api.qiwi.com/partner/bill/v1/bills/create'; ///893794793973
+		$proc = null;
+		$aHeaders = [
+			'Accept: application/json',
+			'Content-Type: application/json',
+			'Authorization: Bearer ' . $this->_oContainer->getParameter('app.qiwi_secret_key')
+		];
+		//$oResponse = $oHttpRequest->sendRawPut($sUrl, $sJsonData, '', $proc, true, '', $aHeaders);
+
+		//----------- ebd old trying -------
+		/** @var \Qiwi\Api\BillPayments $billPayments */
+		$billPayments = new \Qiwi\Api\BillPayments($this->_oContainer->getParameter('app.qiwi_secret_key'));
+
+
+		$billId = $nBuild;
+		$fields = [
+			'amount' => 1.00,
+			'currency' => 'RUB',
+			'comment' => 'test',
+			'phone' => $this->_oContainer->getParameter('app.qiwi_phone'),
+			'expirationDateTime' => date('Y-m-dTH:i:s+03:00'), //  '2018-03-02T08:44:07+03:00'
+			'email' => 'example@mail.org',
+			'account' => $nUserId
+		];
+		try {
+			$oResponse = $billPayments->createBill($billId, $fields);
+		} catch (\Exception $e) {
+			die($e->getMessage());
+		}
+
+		$oResult = new StdClass();
+		$oResult->payUrl = '';
+		if ($oResponse) {
+			$oResult->payUrl = ($oResponse->payUrl ?? '');
+			$oResult->billId = ($oResponse->billId ?? 0);
+		}
+		$oResult->billId = $this->_oContainer->getParameter('app.qiwi_secret_key');
+		//TODO logging
+		file_put_contents('/home/andrey/log.log', print_r($oResponse, true));
+		return $oResult;
+	}
+
+	/**
+	 * Так как это будет в отдельном бандле, то ничего страшного что этот метод продублирован
+	 * Удаляет из номера телефона всё, кроме цифр. Ведущий +7 меняет на 8.
+	 * @param string $sPhone
+	 * @return string
+	*/
+	private function _normalizePhone(string $sPhone) : string
+	{
+		$phone = trim($sPhone);
+		$plus = 0;
+		if (isset($phone[0]) && $phone[0] == '+') {
+			$plus = 1;
+		}
+		$s = trim(preg_replace("#[\D]#", "", $phone));
+		if ($plus && strlen($s) > 10) {
+			$code = substr($s, 0, strlen($s) - 10 );
+			$tail = substr($s, strlen($s) - 10 );
+			$code++;
+			$s = $code . $tail;
+		} elseif($plus) {
+			$s = '';
+		}
+		return $s;
 	}
 }

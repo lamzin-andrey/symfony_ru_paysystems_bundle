@@ -15,3 +15,8 @@ rupayservices.defaultPayTransactionEntity: Landlib\SymfonyRuPaymentsServices\Ent
 #Код операции, которая записывается в operations по умолчанию при успешной оплате
 rupayservices.operation_code_id: 4;
 
+
+app.qiwi_phone: "%env(resolve:QIWI_PHONE)%"
+app.qiwi_public_key: "%env(resolve:QIWI_PUBLIC_KEY)%"
+app.qiwi_secret_key: "%env(resolve:QIWI_SECRET_KEY)%"
+

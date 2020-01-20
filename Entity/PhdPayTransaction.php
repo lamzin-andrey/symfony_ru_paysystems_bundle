@@ -57,6 +57,20 @@ class PhdPayTransaction
      */
     private $method = '';
 
+	/**
+	 * @var string|null
+	 *
+	 * @ORM\Column(name="phone", type="string", length=11, nullable=true, options={"comment"="номер телефона при ms"})
+	 */
+	private $phone = '';
+
+	/**
+	 * @var int|null
+	 * @ORM\Column(name="qiwi_bill_id", type="integer", nullable=true, options={"comment"="billId - идентификатор, полученный в ответе сервера qiwi при создании счёта"})
+	*/
+	private $qiwiBillId = 0;
+
+
     /**
      * @var \DateTime|null
      *
@@ -150,6 +164,18 @@ class PhdPayTransaction
         return $this;
     }
 
+	public function getPhone(): ?string
+	{
+		return $this->phone;
+	}
+
+	public function setPhone(?string $sPhone): self
+	{
+		$this->phone = $sPhone;
+
+		return $this;
+	}
+
     public function getCreated(): ?\DateTimeInterface
     {
         return $this->created;
@@ -198,5 +224,16 @@ class PhdPayTransaction
         return $this;
     }
 
+    public function setQiwiBillId(?int $nBillId): self
+	{
+		$this->qiwiBillId = $nBillId;
+
+		return $this;
+	}
+
+	public function getQiwiBillId(): ?int
+	{
+		return $this->qiwiBillId;
+	}
 
 }
