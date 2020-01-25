@@ -25,7 +25,7 @@ class YamoneyNoticeRecieverController extends AbstractController
         return $oService->processYandexNotice($this, 'setWorkAsPayed');
     }
 	/**
-	 * @param array $aInfo  {user_id, sum, email, phone, order_id} - можно использовать например  для отправки письма
+	 * @param array $aInfo  {user_id, sum, email, phone, order_id, operation_id} - можно использовать например  для отправки письма
 	*/
     public function setWorkAsPayed(array $aInfo)
 	{
@@ -35,7 +35,12 @@ class YamoneyNoticeRecieverController extends AbstractController
 		$oMessage = $oRepository->find($aInfo['order_id']);
 		if ($oMessage) {
 			$oMessage->setIsPayed(true);
-			$oMessage->setState(8);
+			$oMessage->setOperationId($aInfo['operation_id']);
+			//TODO только если загружен уже архив!
+			if ( strlen($oMessage->getResultLink() ) ) {
+				$oMessage->setState(8);
+			}
+
 			$oEm = $this->getDoctrine()->getManager();
 			$oEm->persist($oMessage);
 			$oEm->flush();
@@ -48,7 +53,8 @@ class YamoneyNoticeRecieverController extends AbstractController
 				$sEmail = $oUser->getEmail();
 			}
 			$oService = $this->_oAppService;
-			if ($oService->isValidEmail($sEmail) && $this->getParameter('app.sendemailoff') == 1) {
+			//TODO тут переделать на уведомление, что оплата получена
+			/*if ($oService->isValidEmail($sEmail) && $this->getParameter('app.sendemailoff') == 1) {
 				$subject = 'Ваша верстка ждёт вас';
 				$siteName = $this->getParameter('app.siteName');
 				$siteUrlBegin = $this->getParameter('app.siteUrlBegin');
@@ -66,7 +72,7 @@ class YamoneyNoticeRecieverController extends AbstractController
 				$oMailer->setHtmlText($sBody);
 				$oMailer->send();
 
-			}
+			}*/
 
 		}
 		/*var_dump($aInfo);

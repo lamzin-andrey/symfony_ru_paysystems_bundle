@@ -84,6 +84,7 @@ class PayService
 				$oPayTransaction->setIsConfirmed(true);
 				$oPayTransaction->setYaHttpNoticeId($yaRequestLogId);
 				$oPayTransaction->setRealSum($withdraw_amount);
+				$oPayTransaction->setNotifyDatetime(new \DateTime());
 				$oEm->persist($oPayTransaction);
 				//Записываем данные в operations
 				$aData = $this->_getEmailData($label, $withdraw_amount, $yaRequestLogId);
@@ -156,11 +157,11 @@ class PayService
 				}
 			}
 			$sThree = intval(substr($sPhone, 1, 3));
-			$aBeelineNumbers = [900, 902, 903, 904, 905, 906, 908, 909, 950, 951, 953, 960, 961, 962, 963, 964, 965, 966, 967, 968, 969, 980, 983, 986];
+			//$aBeelineNumbers = [900, 902, 903, 904, 905, 906, 908, 909, 950, 951, 953, 960, 961, 962, 963, 964, 965, 966, 967, 968, 969, 980, 983, 986];
 			$aMtsNumbers = [901, 902, 904, 908, 910, 911, 912, 913, 914, 915, 916, 917, 918, 919, 950, 978, 980, 981, 982, 983, 984, 985, 986, 987, 988, 989];
 
-			if (in_array($sThree, $aBeelineNumbers)) {
-				$oResult->sError = $this->_oTranslator->trans('Мы считаем, что вы введи номер Beeline, потому что первые три цифры номера после +7 или 8 "' . $sThree . '". В настоящее время платежи принимаются только с номеров МТС или Теле 2. ');
+			if (!in_array($sThree, $aMtsNumbers)) {
+				$oResult->sError = $this->_oTranslator->trans('Извините, в настоящее время платежи принимаются только с номеров абонентов МТС. Мы считаем, что вы ввели номер не абонента МТС, потому что первые три цифры номера после +7 или 8 "' . $sThree . '". Вы можете оплатить со счёта Яндекс-кошелька или со счёта банковской карты.');
 				return $oResult;
 			}
 			$oPayTransaction->setPhone($sPhone);
@@ -273,12 +274,12 @@ class PayService
 	}
 	/**
 	 * Результат может использоваться например для отправки письма
-	 * @return array ['sum' => float, 'user_id' => int, 'email' => string, 'phone' => string, 'order_id']
+	 * @return array ['sum' => float, 'user_id' => int, 'email' => string, 'phone' => string, 'order_id', 'operation_id']
 	*/
 	private function _getEmailData(string $label, string $withdraw_amount, string $yaRequestLogId) : array
 	{
 		//TODO ad relation OneToOne
-		$aResult = ['sum' => 0, 'user_id' => 0, 'email' => '', 'phone' => '', 'order_id' => ''];
+		$aResult = ['sum' => 0, 'user_id' => 0, 'email' => '', 'phone' => '', 'order_id' => '', 'operation_id' => ''];
 		$nSum = intval($withdraw_amount);
 		$oLog = $this->_oLog;
 		$aCtx = ['context' => 'payment'];
@@ -300,6 +301,7 @@ class PayService
 			$aResult['user_id'] = $userId = intval( $oPayTransaction->getUserId() );
 			$aResult['sum'] = $userId = floatval( $oPayTransaction->getSum() );
 			$aResult['order_id'] = $operation->getMainId();
+			$aResult['operation_id'] = $operation->getId();
 			$oUserRepository = $this->_oContainer->get('doctrine')->getRepository($this->_sPayUserClass);
 			$oUser = $oUserRepository->find($userId);
 			if ($oUser) {
