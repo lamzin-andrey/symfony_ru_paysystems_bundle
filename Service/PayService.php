@@ -119,7 +119,12 @@ class PayService
 		//NOTE для rk было безразлично, возможно qiwi заставит пересмотреть
 		//Пока всегда пишем номер я-кошелька
 		$oPayTransaction->setCache($this->_oContainer->getParameter('app.yacache'));
-		$oPayTransaction->setSum( strval(floatval($this->_oRequest->get('sum', 0))) );
+		$nSum = strval(floatval($this->_oRequest->get('sum', 0)));
+		if (!$this->_isValidSum($nSum)) {
+			$oResult->sError = $this->_oTranslator->trans('Недопустимая сумма');
+			return $oResult;
+		}
+		$oPayTransaction->setSum($nSum);
 		$sMethod = '';
 		$sRawMethod = $this->_oRequest->get('method', '');
 		switch ($sRawMethod) {
@@ -133,7 +138,7 @@ class PayService
 				$sMethod = 'ps';
 		}
 		if (!$sMethod) {
-			return 0;
+			return $oResult;
 		}
 
 		$oPayTransaction->setMethod($sMethod);
@@ -405,5 +410,22 @@ class PayService
 			$s = '';
 		}
 		return $s;
+	}
+	/**
+	 *
+	 * @param float  $nSum
+	 * @return  bool true если rupayservices.a_fixed_sum пуст или содержит $nSum
+	*/
+	private function _isValidSum($nSum) : bool
+	{
+		$aValidSum = $this->_oContainer->getParameter('rupayservices.a_fixed_sum');
+		$nSum = floatval($nSum);
+		if (!$aValidSum) {
+			return true;
+		}
+		if (in_array($nSum, $aValidSum)) {
+			return true;
+		}
+		return false;
 	}
 }

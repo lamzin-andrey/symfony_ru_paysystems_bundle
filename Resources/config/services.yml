@@ -8,12 +8,16 @@
 
 
 rupayservices.yacache: "%env(resolve:YANDEX_CACHE)%"
-rupayservices.yakey: "%env(resolve:YANDEX_SECRET_KEY)%"
+rupayservices.yasecretkey: "%env(resolve:YANDEX_SECRET_KEY)%"
 #all entity classes set here
 rupayservices.defaultPayTransactionEntity: Landlib\SymfonyRuPaymentsServices\Entity\PhdPayTransaction
 
 #Код операции, которая записывается в operations по умолчанию при успешной оплате
 rupayservices.operation_code_id: 4;
+
+
+# Массив дробных чисел. Допустимые к вводу суммы. Если не пуст, при создании транзакции выполняется валидация
+rupayservices.a_fixed_sum: []
 
 
 app.qiwi_phone: "%env(resolve:QIWI_PHONE)%"

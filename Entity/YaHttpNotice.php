@@ -39,7 +39,7 @@ class YaHttpNotice
     /**
      * @var \DateTime|null
      *
-     * @ORM\Column(name="_datetime", type="datetime", nullable=true, options={"comment"="Пришедшая с сервера Я-Денег временная метка"})
+     * @ORM\Column(name="_datetime", type="datetime", nullable=true, options={"comment"="Пришедшая с сервера Я-Денег временная метка", "default"="CURRENT_TIMESTAMP"})
      */
     private $datetime;
 

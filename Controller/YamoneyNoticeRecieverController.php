@@ -78,4 +78,33 @@ class YamoneyNoticeRecieverController extends AbstractController
 		/*var_dump($aInfo);
 		die();/**/
 	}
+	
+	/**
+	 * @param array $aInfo  {user_id, sum, email, phone, order_id, operation_id} - можно использовать например  для отправки письма
+	 */
+	public function setUpCount(array $aInfo)
+	{
+		//Устанавливаем количество возможностей поднять объявление
+		$oRepository = $this->getDoctrine()->getRepository('App\Entity\Users');
+		$oUser = $oRepository->find($aInfo['user_id']);
+		$nUpcount = 1;
+		$nSum = intval($aInfo['sum']);
+		switch($nSum) {
+			case 200:
+				$nUpcount = 5;
+				break;
+
+			case 700:
+				$nUpcount = 31;
+				break;
+		}
+		$nSafeUpcount = $oUser->getUpcount();
+		$nSafeUpcount = $nSafeUpcount < 0 ? 0 : $nSafeUpcount;
+		$oUser->setUpcount($nSafeUpcount + $nUpcount);
+		$oEm = $this->getDoctrine()->getManager();
+		$oEm->persist($oUser);
+		$oEm->flush();
+
+
+	}
 }

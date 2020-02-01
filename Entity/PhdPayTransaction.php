@@ -99,6 +99,14 @@ class PhdPayTransaction
      */
     private $qiwiHttpNoticeId = '0';
 
+
+	/**
+	 * @var \DateTime|null
+	 *
+	 * @ORM\Column(name="notify_datetime", type="datetime", nullable=true, options={"comment"="Время, когда поступил нотайс от платежной системы", "default"="CURRENT_TIMESTAMP"})
+	 */
+	private $notifyDatetime;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -187,6 +195,17 @@ class PhdPayTransaction
 
         return $this;
     }
+
+	public function getNotifyDatetime(): ?\DateTimeInterface
+	{
+		return $this->notifyDatetime;
+	}
+
+	public function setNotifyDatetime(?\DateTimeInterface $o): self
+	{
+		$this->notifyDatetime = $o;
+		return $this;
+	}
 
     public function getIsConfirmed(): ?bool
     {

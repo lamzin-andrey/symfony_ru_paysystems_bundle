@@ -25,7 +25,7 @@ class PhdOperations
     /**
      * @var int|null
      *
-     * @ORM\Column(name="user_id", type="integer", nullable=true, options={"comment"="Идентификатор пользователя"})
+     * @ORM\Column(name="user_id", type="integer", nullable=true, options={"comment"="Идентификатор пользователя phd_users"})
      */
     private $userId;
 
@@ -46,7 +46,7 @@ class PhdOperations
     /**
      * @var \DateTime|null
      *
-     * @ORM\Column(name="created", type="datetime", nullable=true, options={"comment"="Время операции"})
+     * @ORM\Column(name="created", type="datetime", nullable=true, options={"comment"="Время операции", "default"="CURRENT_TIMESTAMP"})
      */
     private $created;
 
